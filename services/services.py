@@ -2,14 +2,17 @@
 
 """
 
-import cv2 
+import cv2
 import numpy as np
-from matplotlib import pyplot 
+from matplotlib import pyplot
 import face_recognition
 import dlib
 import cmake
 import os
 import glob
+
+from imutils.object_detection import non_max_suppression
+import imutils
 
 from datetime import datetime
 
@@ -31,14 +34,15 @@ class Service(object):
     def cut_image(self, file, xh, xw, yh, yw):
         """[Return None]
             Cut the image given.
-        
+
         """
         date = datetime.now()
         image = cv2.imread(file)
-        cut = image[xh:xw, yh:yw]  
-        
-        cv2.imwrite('imagens/imagens_salvas/cut_image_' + date.strftime("%H-%M-%S") +'.jpg', cut)            
-        cv2.imshow("Recorte", cut)           
+        cut = image[xh:xw, yh:yw]
+
+        cv2.imwrite('imagens/imagens_salvas/cut_image_' +
+                    date.strftime("%H-%M-%S") + '.jpg', cut)
+        cv2.imshow("Recorte", cut)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
@@ -51,12 +55,12 @@ class Service(object):
         date = datetime.now()
         image = cv2.imread(file)
 
-        r_image = cv2.resize(image,(width, height))
-        cv2.imwrite('imagens/imagens_salvas/resized_image_' + date.strftime("%H-%M-%S") +'.jpg', r_image)  
+        r_image = cv2.resize(image, (width, height))
+        cv2.imwrite('imagens/imagens_salvas/resized_image_' +
+                    date.strftime("%H-%M-%S") + '.jpg', r_image)
         cv2.imshow("Image: ", r_image)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
-        
 
 
     def color_image(self, file, color_option):
@@ -69,73 +73,89 @@ class Service(object):
 
         """
         date = datetime.now()
-        image = cv2.imread(file)       
+        image = cv2.imread(file)
 
         if color_option == 1:
-            imageGray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) 
-            cv2.imwrite('imagens/imagens_salvas/gray_image_' + date.strftime("%H-%M-%S") +'.jpg', imageGray) 
-            cv2.imshow("Imagem Tons de Cinza", imageGray)            
+            imageGray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            cv2.imwrite('imagens/imagens_salvas/gray_image_' +
+                        date.strftime("%H-%M-%S") + '.jpg', imageGray)
+            cv2.imshow("Imagem Tons de Cinza", imageGray)
             cv2.waitKey(0)
-            cv2.destroyAllWindows()  
+            cv2.destroyAllWindows()
         elif color_option == 2:
             imageHsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-            cv2.imwrite('imagens/imagens_salvas/hsv_image_' + date.strftime("%H-%M-%S") +'.jpg', imageHsv) 
+            cv2.imwrite('imagens/imagens_salvas/hsv_image_' +
+                        date.strftime("%H-%M-%S") + '.jpg', imageHsv)
             cv2.imshow("Imagem HSV", imageHsv)
             cv2.waitKey(0)
-            cv2.destroyAllWindows()  
+            cv2.destroyAllWindows()
         else:
-            imageLab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB) 
-            cv2.imwrite('imagens/imagens_salvas/lab_image_' + date.strftime("%H-%M-%S") +'.jpg', imageLab)
-            cv2.imshow("Imagem Lab", image)           
+            imageLab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+            cv2.imwrite('imagens/imagens_salvas/lab_image_' +
+                        date.strftime("%H-%M-%S") + '.jpg', imageLab)
+            cv2.imshow("Imagem Lab", image)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
 
-    def detect_person(self, file = None, algorithm = None):
+    def detect_person(self, file=None, algorithm=None):
         """[summary]
 
         """
-        #if file:
+        # if file:
         #    print("arquivo: " + file)
-        #print("opção: " + str(algorithm))
+        # print("opção: " + str(algorithm))
 
+        date = datetime.now()
+        
         if algorithm == 1:
-            
-            if file == None:
 
-                camera = cv2.VideoCapture(0)
-                cascade = cv2.CascadeClassifier("imagens/treinamento/cascade.xml")
+            hog = cv2.HOGDescriptor()
+            hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
+            if file == None:               
+
+                cam = cv2.VideoCapture(0)
                 while True:
-                    _,img = camera.read()
-                    height, width, c = img.shape
-                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                    objects = cascade.detectMultiScale(gray, 1.2, 5)
-                    print(objects)
-                    for (x,y,w,h) in objects:
-                        cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
-
-                    cv2.imshow('Image:', img)
-                    k = cv2.waitKey(60)
-                    if k==27:
+                    retval, image = cam.read()
+                    image = imutils.resize(image, width=min(600, image.shape[1]))
+                    orig = image.copy()
+                    (rects, weights) = hog.detectMultiScale(
+                        image, winStride=(4, 4), padding=(8, 8), scale=1.05)
+                    for (x, y, w, h) in rects:
+                        cv2.rectangle(orig, (x, y), (x + w, y + h), (0, 0, 255), 2)                   
+                    rects = np.array([[x, y, x + w, y + h] for (x, y, w, h) in rects])
+                    pick = non_max_suppression(rects, probs=None, overlapThresh=0.65)
+                    for (xA, yA, xB, yB) in pick:
+                        cv2.rectangle(image, (xA, yA), (xB, yB), (0, 255, 0), 2)
+                    print("[INFO]: {} original boxes, {} after suppression".format(
+                        len(rects), len(pick)))                  
+                    cv2.imshow("After NMS", image)
+                    k = cv2.waitKey(1) 
+                    if k == 27:  
                         break
-
-                camera.release()
                 cv2.destroyAllWindows()
-            
+
             else:
-
-                cascade = cv2.CascadeClassifier("imagens/treinamento/cascade.xml")
-                img = cv2.imread(file)
-                height, width, c = img.shape
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                objects = cascade.detectMultiScale(gray, 1.2, 5)
-                print(objects)
-                for (x,y,w,h) in objects:
-                    cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
-
-                cv2.imshow('Image: ', img)
-                cv2.waitKey(0)
+                
+                image = cv2.imread(file)
+                while True:                    
+                    image = imutils.resize(image, width=min(600, image.shape[1]))
+                    orig = image.copy()
+                    (rects, weights) = hog.detectMultiScale(
+                        image, winStride=(4, 4), padding=(8, 8), scale=1.05)
+                    for (x, y, w, h) in rects:
+                        cv2.rectangle(orig, (x, y), (x + w, y + h), (0, 0, 255), 2)                  
+                    rects = np.array([[x, y, x + w, y + h] for (x, y, w, h) in rects])
+                    pick = non_max_suppression(rects, probs=None, overlapThresh=0.65)
+                    for (xA, yA, xB, yB) in pick:
+                        cv2.rectangle(image, (xA, yA), (xB, yB), (0, 255, 0), 2)
+                    print("[INFO]: {} original boxes, {} after suppression".format(
+                        len(rects), len(pick)))                   
+                    cv2.imshow("After NMS", image)
+                    k = cv2.waitKey(1)  
+                    if k == 27:  
+                        break
                 cv2.destroyAllWindows()
 
         else:      
@@ -145,8 +165,7 @@ class Service(object):
             currentDir = os.getcwd()
             path = os.path.join(currentDir, "imagens/condominos/")
 
-            lista = [f for f in glob.glob(path+"*.jpg")]
-            print(lista)
+            lista = [f for f in glob.glob(path+"*.jpg")]            
             tamanhoLista = len(lista)
             names = lista.copy()
 
@@ -157,7 +176,9 @@ class Service(object):
                 names[i] = names[i].replace(currentDir, "")
                 names[i] = names[i].replace(".jpg", "")
                 names[i] = names[i].replace("imagens", "")
-                names[i] = names[i].replace("condominos", "morador=")
+                names[i] = names[i].replace("condominos", "")
+                names[i] = names[i].replace("/", "")
+                names[i] = names[i].replace("\\", "")
                 faces_names.append(names[i])
 
             face_locations = []
@@ -178,7 +199,7 @@ class Service(object):
                     face_names = []
                     for face in face_encodings:
                         matches = face_recognition.compare_faces(faces_encodings, face)
-                        name = "Desconhecido no condomínio"
+                        name = "Desconhecida"
                         face_distances = face_recognition.face_distance(faces_encodings, face)
                         bestMatch = np.argmin(face_distances)
                         if matches[bestMatch]:
@@ -192,9 +213,10 @@ class Service(object):
                         left = left * 4
                         cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
                         cv2.rectangle(frame, (left, bottom-35), (right, bottom), (0,0,255), cv2.FILLED)
-                        cv2.putText(frame, name, (left+6, bottom-6),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 1)
-                    cv2.imshow("Camera", frame)
+                        cv2.putText(frame, name, (left+6, bottom-6),cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 1)
+                        cv2.imwrite('imagens/imagens_de_log/pessoa_'+ name +'_'+ date.strftime("%H-%M-%S") +'.jpg', frame)
+                    cv2.imshow("Camera", frame)   
+                    #cv2.imwrite('imagens/imagens_de_log/morador_'+ date.strftime("%H-%M-%S") +'.jpg', frame)                 
                     k = cv2.waitKey(30)
                     if k == 27:
                         break
@@ -202,7 +224,7 @@ class Service(object):
                 camera.release()
             
             else:
-
+            
                 image = cv2.imread(file)  
                 while True:
                     
@@ -214,7 +236,7 @@ class Service(object):
                     face_names = []
                     for face in face_encodings:
                         matches = face_recognition.compare_faces(faces_encodings, face)
-                        name = "Desconhecido no condomínio"
+                        name = "Desconhecida"
                         face_distances = face_recognition.face_distance(faces_encodings, face)
                         bestMatch = np.argmin(face_distances)
                         if matches[bestMatch]:
@@ -228,9 +250,10 @@ class Service(object):
                         left = left * 4
                         cv2.rectangle(image, (left, top), (right, bottom), (0, 0, 255), 2)
                         cv2.rectangle(image, (left, bottom-35), (right, bottom), (0,0,255), cv2.FILLED)
-                        cv2.putText(image, name, (left+6, bottom-6),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 1)
+                        cv2.putText(image, name, (left+6, bottom-6),cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 1)
+                        cv2.imwrite('imagens/imagens_de_log/morador_'+ name +'_'+ date.strftime("%H-%M-%S") +'.jpg', image)
                     cv2.imshow("Imagem", image)
+                    #cv2.imwrite('imagens/imagens_de_log/morador_'+ date.strftime("%H-%M-%S") +'.jpg', image)
                     k = cv2.waitKey(30)
                     if k == 27:
                         break
@@ -271,7 +294,7 @@ class Service(object):
                 for contorno in contornos: 
                     (x, y, w, h) = cv2.boundingRect(contorno) 
                     area = cv2.contourArea(contorno) 
-                    if area > 1500: 
+                    if area > 1500:  
                         cv2.putText(frame, "Objeto detectado", (10, 80),
                                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255)) 
                         cv2.drawContours(frame, contorno, -1, (0, 0, 0), 5) 
